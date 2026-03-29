@@ -2,13 +2,16 @@ name: Agi Blog — UI Tests
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+
+# Required for GitHub Pages deployment and gh-pages branch writes
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   ui-tests:
@@ -16,9 +19,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ── 1. Checkout source ────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── 2. Java 17 + Maven cache ──────────────────────────────────────
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
@@ -26,33 +31,84 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # ── 3. Install Chromium + system dependencies ─────────────────────
       - name: Install Playwright Chromium
-        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install chromium --with-deps"
+        run: mvn exec:java -e \
+               -D exec.mainClass=com.microsoft.playwright.CLI \
+               -D exec.args="install chromium --with-deps"
 
-      - name: Run tests
+      # ── 4. Run the test suite ─────────────────────────────────────────
+      - name: Run UI Tests
+        id: run-tests
         continue-on-error: true
-        run: mvn test -Dheadless=true -Dbrowser=chromium
+        run: mvn test -Dheadless=true -Dbrowser=chromium -Dtimeout=30000
 
+      # ── 5. Fetch Allure history from gh-pages (enables trend charts) ──
+      - name: Fetch Allure history
+        uses: actions/checkout@v4
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      # ── 6. Generate the Allure HTML report (with history) ─────────────
       - name: Generate Allure Report
         uses: simple-elf/allure-report-action@v1.7
         if: always()
         with:
           allure_results: target/allure-results
-          allure_report: allure-report
           allure_history: allure-history
+          keep_reports: 20
 
+      # ── 7. Upload report as a downloadable artifact ───────────────────
       - name: Upload Allure Report artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: allure-report
-          path: allure-report
+          name: allure-report-${{ github.run_number }}
+          path: allure-history
           retention-days: 30
 
+      # ── 8. Publish report to GitHub Pages (main branch only) ──────────
       - name: Publish Allure Report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: allure-report
+          publish_dir: allure-history
+
+      # ── 9. Write test summary to the GitHub Actions job page ──────────
+      - name: Test Results Summary
+        if: always()
+        run: |
+          echo "## 🧪 Agi Blog — Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          REPORT_FILES=$(ls target/surefire-reports/*.txt 2>/dev/null | wc -l)
+          if [ "$REPORT_FILES" -gt 0 ]; then
+            TOTAL=$(grep -h "Tests run:" target/surefire-reports/*.txt \
+              | grep -oP "Tests run: \K[0-9]+" | awk '{s+=$1} END{print s+0}')
+            FAILURES=$(grep -h "Tests run:" target/surefire-reports/*.txt \
+              | grep -oP "Failures: \K[0-9]+" | awk '{s+=$1} END{print s+0}')
+            ERRORS=$(grep -h "Tests run:" target/surefire-reports/*.txt \
+              | grep -oP "Errors: \K[0-9]+" | awk '{s+=$1} END{print s+0}')
+            SKIPPED=$(grep -h "Tests run:" target/surefire-reports/*.txt \
+              | grep -oP "Skipped: \K[0-9]+" | awk '{s+=$1} END{print s+0}')
+            PASSED=$((TOTAL - FAILURES - ERRORS - SKIPPED))
+
+            echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|:-------|------:|" >> $GITHUB_STEP_SUMMARY
+            echo "| ✅ Passed  | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ Failed  | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⚠️ Errors  | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
+            echo "| 📊 Total   | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ⚠️ No surefire reports found — tests may not have run." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "📋 **[View full Allure Report »](https://thitoribeiro.github.io/evertec-agibank-ui-test-automation-playwright-java/)**" >> $GITHUB_STEP_SUMMARY

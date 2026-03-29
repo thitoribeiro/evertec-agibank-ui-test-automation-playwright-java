@@ -1,14 +1,59 @@
-version: "3.8"
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────
+# Usage:
+#   Run tests + generate report + open in browser (all-in-one):
+#     docker compose up --abort-on-container-exit
+#   Then open: http://localhost:8080
+#
+#   Run tests only (no report server):
+#     docker compose run --rm test-runner
+#
+#   Override defaults:
+#     HEADLESS=false BROWSER=firefox docker compose up
+# ─────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── 1. Runs the full test suite and generates the Allure HTML report ──
   test-runner:
     build:
       context: .
+      dockerfile: Dockerfile
+    environment:
+      HEADLESS: "${HEADLESS:-true}"
+      BROWSER: "${BROWSER:-chromium}"
+      TIMEOUT: "${TIMEOUT:-30000}"
+      BASE_URL: "${BASE_URL:-https://blog.agibank.com.br}"
     volumes:
+      # Allure raw results — available on the host for inspection / CI upload
       - ./target/allure-results:/app/target/allure-results
+      # Generated HTML report — served by report-server below
+      - ./target/allure-report:/app/target/allure-report
+      # Surefire XML/TXT reports
       - ./target/surefire-reports:/app/target/surefire-reports
+    # Exit code 0 even when tests fail so the report-server still starts.
+    # The ';' between commands guarantees allure:report always runs.
     command: >
-      mvn test
-      -Dheadless=true
-      -Dbrowser=chromium
-      -Dtimeout=30000
+      sh -c "
+        mvn test
+          -Dheadless=$${HEADLESS}
+          -Dbrowser=$${BROWSER}
+          -Dtimeout=$${TIMEOUT}
+          -Dbase.url=$${BASE_URL};
+        mvn allure:report -q
+      "
+
+  # ── 2. Serves the generated Allure report on http://localhost:8080 ──
+  #       Starts only after test-runner completes successfully (exit 0).
+  report-server:
+    image: nginx:1.25-alpine
+    depends_on:
+      test-runner:
+        condition: service_completed_successfully
+    ports:
+      - "8080:80"
+    volumes:
+      - ./target/allure-report:/usr/share/nginx/html:ro
+    # Keep the server running until the user presses Ctrl+C
+    restart: "no"
