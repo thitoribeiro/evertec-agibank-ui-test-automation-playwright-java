@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  test-runner:
+    build:
+      context: .
+    volumes:
+      - ./target/allure-results:/app/target/allure-results
+      - ./target/surefire-reports:/app/target/surefire-reports
+    command: >
+      mvn test
+      -Dheadless=true
+      -Dbrowser=chromium
+      -Dtimeout=30000
