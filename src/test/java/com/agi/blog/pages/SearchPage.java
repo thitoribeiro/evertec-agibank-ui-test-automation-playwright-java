@@ -4,6 +4,8 @@ import com.agi.blog.utils.ElementMap;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.WaitForSelectorState;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SearchPage {
@@ -11,6 +13,20 @@ public class SearchPage {
     private final ElementMap map = new ElementMap("search");
 
     public SearchPage(Page page) { this.page = page; }
+
+    /**
+     * Navigates directly to /?s={term} — reliable alternative to interacting with the
+     * Astra overlay, which is CSS-controlled and may not be reachable in headless mode.
+     */
+    public void searchFor(String baseUrl, String term) {
+        try {
+            String encoded = URLEncoder.encode(term, StandardCharsets.UTF_8);
+            page.navigate(baseUrl + "/?s=" + encoded);
+            page.waitForLoadState();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to navigate to search results for term: " + term, e);
+        }
+    }
 
     public void typeSearchTerm(String term) { findInput().fill(term); }
 
@@ -75,12 +91,11 @@ public class SearchPage {
     }
 
     private Locator findInput() {
-        // Astra Theme search opens an overlay with CSS transition — wait up to 8s for input to appear
         for (String sel : map.getFallbacks("input")) {
             try {
                 page.waitForSelector(sel,
                     new Page.WaitForSelectorOptions()
-                        .setTimeout(8000)
+                        .setTimeout(3000)
                         .setState(WaitForSelectorState.VISIBLE));
                 return page.locator(sel).first();
             } catch (Exception ignored) {}

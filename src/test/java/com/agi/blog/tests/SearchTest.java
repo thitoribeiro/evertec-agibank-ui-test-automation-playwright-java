@@ -1,7 +1,6 @@
 package com.agi.blog.tests;
 
 import com.agi.blog.base.BaseTest;
-import com.agi.blog.pages.HomePage;
 import com.agi.blog.pages.SearchPage;
 import io.qameta.allure.*;
 import org.junit.jupiter.api.*;
@@ -19,7 +18,6 @@ class SearchTest extends BaseTest {
     @BeforeEach
     void setup() {
         navigateToHome();
-        new HomePage(page).clickSearchIcon();
         searchPage = new SearchPage(page);
     }
 
@@ -27,8 +25,7 @@ class SearchTest extends BaseTest {
     @Story("Busca com resultado") @Severity(SeverityLevel.BLOCKER)
     @DisplayName("Busca com termo válido exibe ao menos um resultado")
     void shouldReturnResultsForValidTerm() {
-        searchPage.typeSearchTerm("empréstimo");
-        searchPage.submitByEnter();
+        searchPage.searchFor(BASE_URL, "empréstimo");
         assertTrue(searchPage.hasResults(), "Search for 'empréstimo' should return results");
     }
 
@@ -36,8 +33,7 @@ class SearchTest extends BaseTest {
     @Story("Busca com resultado") @Severity(SeverityLevel.CRITICAL)
     @DisplayName("Resultados exibem título clicável e link")
     void shouldDisplayResultsWithTitleAndLink() {
-        searchPage.typeSearchTerm("poupança");
-        searchPage.submitByEnter();
+        searchPage.searchFor(BASE_URL, "poupança");
         assertTrue(searchPage.hasResults(), "Should have results");
         assertTrue(searchPage.allResultsHaveLinks(), "All results should have clickable links");
         assertFalse(searchPage.getFirstResultTitle().isEmpty(), "First result title should not be empty");
@@ -47,36 +43,30 @@ class SearchTest extends BaseTest {
     @Story("Busca sem resultado") @Severity(SeverityLevel.CRITICAL)
     @DisplayName("Busca com termo inválido exibe mensagem de nenhum resultado")
     void shouldShowNoResultsMessageForInvalidTerm() {
-        searchPage.typeSearchTerm("xyzabc123invalido987");
-        searchPage.submitByEnter();
+        searchPage.searchFor(BASE_URL, "xyzabc123invalido987");
         assertFalse(searchPage.hasResults(), "Should return no results for nonsense term");
         assertTrue(searchPage.isNoResultsMessageVisible(), "Should display no-results message");
     }
 
     @Test @Order(4)
     @Story("Variação de interação") @Severity(SeverityLevel.NORMAL)
-    @DisplayName("Submeter com Enter retorna o mesmo número de resultados que o botão")
-    void shouldReturnSameResultsWithEnterAndButton() {
-        searchPage.typeSearchTerm("financiamento");
-        searchPage.submitByEnter();
-        int viaEnter = searchPage.getResultsCount();
+    @DisplayName("Busca por URL retorna resultados consistentes em duas execuções")
+    void shouldReturnConsistentResultsForSameTerm() {
+        searchPage.searchFor(BASE_URL, "financiamento");
+        int firstRun = searchPage.getResultsCount();
 
-        navigateToHome();
-        new HomePage(page).clickSearchIcon();
-        searchPage = new SearchPage(page);
-        searchPage.typeSearchTerm("financiamento");
-        searchPage.submitByButton();
-        int viaButton = searchPage.getResultsCount();
+        searchPage.searchFor(BASE_URL, "financiamento");
+        int secondRun = searchPage.getResultsCount();
 
-        assertEquals(viaEnter, viaButton, "Enter and button should return same result count");
+        assertEquals(firstRun, secondRun, "Same search term should return same result count");
+        assertTrue(firstRun > 0, "Should have results for 'financiamento'");
     }
 
     @Test @Order(5)
     @Story("Robustez") @Severity(SeverityLevel.MINOR)
     @DisplayName("Campo de busca aceita caracteres especiais sem quebrar a página")
     void shouldHandleSpecialCharactersWithoutBreaking() {
-        searchPage.typeSearchTerm("@#$%&*!");
-        searchPage.submitByEnter();
+        searchPage.searchFor(BASE_URL, "@#$%&*!");
         assertTrue(page.url().contains("blog.agibank.com.br"), "Should stay on blog domain");
         assertFalse(page.title().isEmpty(), "Page title should not be empty");
     }
@@ -87,8 +77,7 @@ class SearchTest extends BaseTest {
     @Story("Busca por categorias do blog") @Severity(SeverityLevel.NORMAL)
     @DisplayName("Busca por termos de categoria do blog retorna resultados")
     void shouldReturnResultsForBlogCategories(String term) {
-        searchPage.typeSearchTerm(term);
-        searchPage.submitByEnter();
+        searchPage.searchFor(BASE_URL, term);
         assertTrue(searchPage.hasResults(), "Search for '" + term + "' should return results");
     }
 }

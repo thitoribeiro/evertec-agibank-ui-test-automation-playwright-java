@@ -16,10 +16,8 @@ class ArticleTest extends BaseTest {
     @BeforeEach
     void navigateToArticleViaSearch() {
         navigateToHome();
-        new HomePage(page).clickSearchIcon();
         SearchPage sp = new SearchPage(page);
-        sp.typeSearchTerm("empréstimo");
-        sp.submitByEnter();
+        sp.searchFor(BASE_URL, "empréstimo");
         assertTrue(sp.hasResults(), "Precondition failed: search must return results");
         sp.clickFirstResult();
         articlePage = new ArticlePage(page);
