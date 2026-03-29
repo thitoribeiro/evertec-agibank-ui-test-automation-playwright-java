@@ -4,6 +4,8 @@ import com.agi.blog.utils.ElementMap;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.WaitForSelectorState;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SearchPage {
@@ -11,6 +13,20 @@ public class SearchPage {
     private final ElementMap map = new ElementMap("search");
 
     public SearchPage(Page page) { this.page = page; }
+
+    /**
+     * Navigates directly to /?s={term} — reliable alternative to interacting with the
+     * Astra overlay, which is CSS-controlled and may not be reachable in headless mode.
+     */
+    public void searchFor(String baseUrl, String term) {
+        try {
+            String encoded = URLEncoder.encode(term, StandardCharsets.UTF_8);
+            page.navigate(baseUrl + "/?s=" + encoded);
+            page.waitForLoadState();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to navigate to search results for term: " + term, e);
+        }
+    }
 
     public void typeSearchTerm(String term) { findInput().fill(term); }
 
@@ -43,7 +59,13 @@ public class SearchPage {
     public int getResultsCount() { return page.locator(map.get("result.items")).count(); }
 
     public List<String> getResultTitles() {
-        return page.locator(map.get("result.titles")).allInnerTexts();
+        for (String sel : map.getFallbacks("result.titles")) {
+            try {
+                List<String> titles = page.locator(sel).allInnerTexts();
+                if (!titles.isEmpty()) return titles;
+            } catch (Exception ignored) {}
+        }
+        return List.of();
     }
 
     public String getFirstResultTitle() {
@@ -61,24 +83,41 @@ public class SearchPage {
     }
 
     public boolean allResultsHaveLinks() {
-        List<Locator> links = page.locator(map.get("result.titles")).all();
-        return !links.isEmpty() && links.stream()
-                .allMatch(l -> l.getAttribute("href") != null && !l.getAttribute("href").isEmpty());
+        for (String sel : map.getFallbacks("result.titles")) {
+            try {
+                List<Locator> links = page.locator(sel).all();
+                if (!links.isEmpty()) {
+                    return links.stream()
+                        .allMatch(l -> l.getAttribute("href") != null && !l.getAttribute("href").isEmpty());
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
     }
 
     public String clickFirstResult() {
-        Locator first = page.locator(map.get("result.titles")).first();
-        String href = first.getAttribute("href");
-        first.click();
-        page.waitForLoadState();
-        return href;
+        for (String sel : map.getFallbacks("result.titles")) {
+            try {
+                Locator l = page.locator(sel).first();
+                if (l.count() > 0) {
+                    String href = l.getAttribute("href");
+                    l.click();
+                    page.waitForLoadState();
+                    return href != null ? href : "";
+                }
+            } catch (Exception ignored) {}
+        }
+        throw new RuntimeException("No result titles found to click. URL: " + page.url());
     }
 
     private Locator findInput() {
         for (String sel : map.getFallbacks("input")) {
             try {
-                Locator l = page.locator(sel).first();
-                if (l.isVisible()) return l;
+                page.waitForSelector(sel,
+                    new Page.WaitForSelectorOptions()
+                        .setTimeout(3000)
+                        .setState(WaitForSelectorState.VISIBLE));
+                return page.locator(sel).first();
             } catch (Exception ignored) {}
         }
         throw new RuntimeException("Search input not found. URL: " + page.url());

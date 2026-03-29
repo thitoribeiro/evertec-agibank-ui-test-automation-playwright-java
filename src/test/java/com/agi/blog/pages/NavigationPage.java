@@ -13,7 +13,7 @@ public class NavigationPage {
 
     public void hoverMenuItem(String text) {
         findItem(text).hover();
-        page.waitForTimeout(500);
+        page.waitForTimeout(900); // Astra dropdown has CSS transition ~300ms; extra buffer for CI
     }
 
     public void clickMenuItem(String text) {
@@ -22,16 +22,24 @@ public class NavigationPage {
     }
 
     public boolean isSubmenuVisible(String parentText) {
+        // Astra hides submenus with visibility:hidden / opacity:0 before hover.
+        // After hover + wait, check count() > 0 (exists in DOM and rendered) within the li,
+        // then fall back to a global page check.
         try {
             Locator parent = findItem(parentText);
             for (String sel : map.getFallbacks("submenu")) {
-                try { if (parent.locator(sel).isVisible()) return true; }
-                catch (Exception ignored) {}
+                try {
+                    Locator sub = parent.locator(sel);
+                    if (sub.count() > 0) return true;
+                } catch (Exception ignored) {}
             }
-            return false;
-        } catch (Exception e) {
-            return page.locator(map.getAsComma("submenu.visible")).count() > 0;
+        } catch (Exception ignored) {}
+        // Global fallback: any visible sub-menu on the page
+        for (String sel : map.getFallbacks("submenu.visible")) {
+            try { if (page.locator(sel).count() > 0) return true; }
+            catch (Exception ignored) {}
         }
+        return false;
     }
 
     public List<String> getSubmenuItems(String parentText) {

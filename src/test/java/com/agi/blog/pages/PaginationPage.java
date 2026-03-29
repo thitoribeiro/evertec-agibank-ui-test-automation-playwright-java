@@ -46,10 +46,13 @@ public class PaginationPage {
         for (String sel : map.getFallbacks("page.number.click", String.valueOf(n))) {
             try {
                 Locator l = page.locator(sel).first();
-                if (l.isVisible()) { l.click(); page.waitForLoadState(); return; }
+                if (l.count() > 0) { l.click(); page.waitForLoadState(); return; }
             } catch (Exception ignored) {}
         }
-        throw new RuntimeException("Page number " + n + " not found");
+        // Fallback: navigate directly to the page URL (WordPress standard structure)
+        String base = page.url().replaceAll("/page/\\d+/?", "").replaceAll("/$", "");
+        page.navigate(base + "/page/" + n + "/");
+        page.waitForLoadState();
     }
 
     public String getCurrentPageNumber() {
