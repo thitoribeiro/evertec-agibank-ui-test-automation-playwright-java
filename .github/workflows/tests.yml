@@ -1,13 +1,6 @@
 name: Agi Blog — UI Tests
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
