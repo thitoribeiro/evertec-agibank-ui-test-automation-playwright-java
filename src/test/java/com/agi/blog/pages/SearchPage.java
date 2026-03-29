@@ -75,10 +75,14 @@ public class SearchPage {
     }
 
     private Locator findInput() {
+        // Astra Theme search opens an overlay with CSS transition — wait up to 8s for input to appear
         for (String sel : map.getFallbacks("input")) {
             try {
-                Locator l = page.locator(sel).first();
-                if (l.isVisible()) return l;
+                page.waitForSelector(sel,
+                    new Page.WaitForSelectorOptions()
+                        .setTimeout(8000)
+                        .setState(WaitForSelectorState.VISIBLE));
+                return page.locator(sel).first();
             } catch (Exception ignored) {}
         }
         throw new RuntimeException("Search input not found. URL: " + page.url());
